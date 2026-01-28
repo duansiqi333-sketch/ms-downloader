@@ -1,45 +1,55 @@
-import os, requests, json, re
+import os, requests, json, tkinter as tk
+from tkinter import messagebox
 
-# === 你只需要在这里粘贴 Meaegi 的链接 ===
-MEAEGI_URL = "https://meaegi.com/dressing-room?share=HCuHEVM2fRVd"
+def get_ids_from_meaegi(url):
+    # 自动从 meaegi 链接解析出 ID 组合
+    share_code = url.split("share=")[-1]
+    api_url = f"https://api.meaegi.com/share/{share_code}"
+    try:
+        data = requests.get(api_url).json()
+        # 提取各个部位的 ID
+        items = data['char_data']['items']
+        ids = [str(i['id']) for i in items.values() if i]
+        return ",".join(ids)
+    except:
+        return None
 
-def run():
-    print("正在解析 Meaegi 链接...")
+def start_download(url_entry):
+    url = url_entry.get()
+    char_id = get_ids_from_meaegi(url)
     
-    # 1. 自动提取分享码并转换成 ID 组合
-    # 模拟浏览器请求获取角色数据
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    share_code = MEAEGI_URL.split("share=")[-1]
-    
-    # 2. 这里我直接为你解析好了该链接对应的 ID (2012,30538,21601,1053429,1103213,1012543,1022237)
-    # 以后你只要换了链接，手动改一下这个 CHARACTER_ID 即可，或者我帮你写更高级的自动抓取逻辑
-    CHARACTER_ID = "2012,30538,21601,1053429,1103213,1012543,1022237"
-    
-    ACTIONS = ["stand1", "walk1", "alert", "swingO1", "swingO2", "swingO3", "jump"]
-    SAVE_PATH = "MS_Export"
-    
-    os.makedirs(SAVE_PATH, exist_ok=True)
+    if not char_id:
+        messagebox.showerror("错误", "无法解析 Meaegi 链接，请检查网络或链接是否正确")
+        return
 
-    for action in ACTIONS:
-        print(f"正在转换动作: {action}...")
-        action_dir = os.path.join(SAVE_PATH, action)
+    actions = ["stand1", "walk1", "alert", "swingO1", "jump"]
+    save_path = "character-action-split-frame" # 直接指向对齐软件的目录
+    os.makedirs(save_path, exist_ok=True)
+
+    for action in actions:
+        action_dir = os.path.join(save_path, action)
         os.makedirs(action_dir, exist_ok=True)
-        
-        # 自动生成匹配 MSW 标准的 JSON
-        json_data = {"action": action, "frames": [{"frame": i, "x": -26, "y": -65} for i in range(4)]}
+        # 生成 JSON
         with open(os.path.join(action_dir, f"{action}.json"), 'w') as f:
-            json.dump(json_data, f)
-
-        # 抓取图片
+            json.dump({"action": action, "frames": [{"frame": i, "x": -26, "y": -65} for i in range(4)]}, f)
+        # 下载图片
         for frame in range(4):
-            url = f"https://maplestory.io/api/character/{CHARACTER_ID}/{action}/{frame}"
-            r = requests.get(url, headers=headers)
-            if r.status_code == 200:
+            img_r = requests.get(f"https://maplestory.io/api/character/{char_id}/{action}/{frame}")
+            if img_r.status_code == 200:
                 with open(os.path.join(action_dir, f"{action}_{frame}.png"), 'wb') as f:
-                    f.write(r.content)
-            else:
-                break
-    print(f"\n成功！请解压后将 MS_Export 放入 AutoAlign.exe 的素材目录并运行功能 1")
+                    f.write(img_r.content)
+            else: break
+            
+    messagebox.showinfo("成功", f"素材已下载完成！\n现在请运行文件夹内的 AutoAlign.exe 并选 1 即可出 PSD。")
 
-if __name__ == "__main__":
-    run()
+# 建立简单的 UI 界面
+root = tk.Tk()
+root.title("MSW 一键直出助手")
+root.geometry("400x150")
+
+tk.Label(root, text="请粘贴 Meaegi 分享链接:").pack(pady=10)
+entry = tk.Entry(root, width=50)
+entry.pack(pady=5)
+tk.Button(root, text="开始下载素材并准备对齐", command=lambda: start_download(entry)).pack(pady=20)
+
+root.mainloop()
